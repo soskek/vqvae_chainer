@@ -7,8 +7,10 @@ This is derived from [Chainer official VAE example](https://github.com/chainer/c
 
 ## MNIST reconstruction
 
-Reconstuction from 2 embedded points, each of them are sampled from 50 discret points. (50 patterns x 50 patterns)
+Reconstuction from 2 embedded points, each of them are sampled from 50 discrete points. (50 patterns x 50 patterns)
 
 ```
 python train_vae.py -g 0 --vqvae -z 20 -u 200
 ```
+
+After training, you can see reconstructed digits as jpgs in directory `./result`.
