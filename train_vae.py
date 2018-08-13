@@ -113,15 +113,19 @@ def main():
         x = chainer.Variable(np.asarray(train[train_ind]))
         with chainer.using_config('train', False), chainer.no_backprop_mode():
             x1 = model(x)
-        save_images(x.data, os.path.join(args.out, 'train'))
-        save_images(x1.data, os.path.join(args.out, 'train_reconstructed'))
+        save_images(x.data, os.path.join(
+            args.out, '{.updater.iteration}_train'.format(trainer)))
+        save_images(x1.data, os.path.join(
+            args.out, '{.updater.iteration}_train_reconstructed'.format(trainer)))
 
         test_ind = [3, 2, 1, 18, 4, 8, 11, 17, 61]
         x = chainer.Variable(np.asarray(test[test_ind]))
         with chainer.using_config('train', False), chainer.no_backprop_mode():
             x1 = model(x)
-        save_images(x.data, os.path.join(args.out, 'test'))
-        save_images(x1.data, os.path.join(args.out, 'test_reconstructed'))
+        save_images(x.data, os.path.join(
+            args.out, '{.updater.iteration}_test'.format(trainer)))
+        save_images(x1.data, os.path.join(
+            args.out, '{.updater.iteration}_test_reconstructed'.format(trainer)))
 
         # draw images from randomly sampled z
         if args.vqvae:
@@ -130,7 +134,8 @@ def main():
             z = chainer.Variable(
                 np.random.normal(0, 1, (9, args.dimz)).astype(np.float32))
         x = model.decode(z)
-        save_images(x.data, os.path.join(args.out, 'sampled'))
+        save_images(x.data, os.path.join(
+            args.out, '{.updater.iteration}_sampled'.format(trainer)))
 
         if args.gpu >= 0:
             chainer.cuda.get_device_from_id(args.gpu).use()
