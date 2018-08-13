@@ -13,8 +13,10 @@ class VQVAE(chainer.Chain):
     def __init__(self, n_in, n_latent, n_h):
         super(VQVAE, self).__init__()
 
-        n_vocab1 = 50
-        n_vocab2 = 50
+        n_vocab1 = 10
+        n_vocab2 = 10
+        n_vocab3 = 10
+        n_vocab4 = 10
 
         with self.init_scope():
             # encoder
@@ -28,13 +30,17 @@ class VQVAE(chainer.Chain):
 
             self.bne = L.BatchNormalization(
                 n_latent, use_gamma=False, use_beta=True)
-            self.embed1 = L.EmbedID(n_vocab1, n_latent // 2)
-            self.embed2 = L.EmbedID(n_vocab2, n_latent // 2)
+            self.embed1 = L.EmbedID(n_vocab1, n_latent // 4)
+            self.embed2 = L.EmbedID(n_vocab2, n_latent // 4)
+            self.embed3 = L.EmbedID(n_vocab3, n_latent // 4)
+            self.embed4 = L.EmbedID(n_vocab4, n_latent // 4)
             # initialW=chainer.initializers.Normal()
 
         self.n_latent = n_latent
         self.n_vocab1 = n_vocab1
         self.n_vocab2 = n_vocab2
+        self.n_vocab3 = n_vocab3
+        self.n_vocab4 = n_vocab4
 
     def __call__(self, x, sigmoid=True):
         """AutoEncoder"""
@@ -46,7 +52,7 @@ class VQVAE(chainer.Chain):
         ze = self.le3(h)
         ze = self.bne(ze)
 
-        ze1, ze2 = F.split_axis(ze, 2, axis=1)
+        ze1, ze2, ze3, ze4 = F.split_axis(ze, 4, axis=1)
 
         def quantize_and_embed(ze, embed):
             ZE = ze.data[:, None, :]
@@ -65,8 +71,10 @@ class VQVAE(chainer.Chain):
         # e = ze
         e1, loss1 = quantize_and_embed(ze1, self.embed1)
         e2, loss2 = quantize_and_embed(ze2, self.embed2)
-        self.other_loss = (loss1 + loss2) / x.shape[0]
-        e = F.concat([e1, e2], axis=1)
+        e3, loss3 = quantize_and_embed(ze3, self.embed3)
+        e4, loss4 = quantize_and_embed(ze4, self.embed4)
+        self.other_loss = (loss1 + loss2 + loss3 + loss4) / x.shape[0]
+        e = F.concat([e1, e2, e3, e4], axis=1)
         # print(F.mean(F.sum(ze1 ** 2, axis=1).data ** 0.5),
         #       F.mean(F.sum(e1 ** 2, axis=1).data ** 0.5))
         return e
@@ -83,9 +91,13 @@ class VQVAE(chainer.Chain):
     def sample(self, size):
         zi1 = self.xp.random.randint(0, self.n_vocab1, (size, )).astype('i')
         zi2 = self.xp.random.randint(0, self.n_vocab2, (size, )).astype('i')
+        zi3 = self.xp.random.randint(0, self.n_vocab3, (size, )).astype('i')
+        zi4 = self.xp.random.randint(0, self.n_vocab4, (size, )).astype('i')
         e1 = self.embed1(zi1)
         e2 = self.embed2(zi2)
-        e = F.concat([e1, e2], axis=1)
+        e3 = self.embed3(zi3)
+        e4 = self.embed4(zi4)
+        e = F.concat([e1, e2, e3, e4], axis=1)
         return e
 
     def get_loss_func(self, C=1.0, k=1):
