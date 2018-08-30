@@ -13,8 +13,8 @@ class VQVAE(chainer.Chain):
     def __init__(self, n_in, n_latent, n_h):
         super(VQVAE, self).__init__()
 
-        n_vocab1 = 50
-        n_vocab2 = 50
+        n_vocab = 10  # K
+        n_embed = 8  # the number of latent variables in different spaces
 
         with self.init_scope():
             # encoder
@@ -28,13 +28,14 @@ class VQVAE(chainer.Chain):
 
             self.bne = L.BatchNormalization(
                 n_latent, use_gamma=False, use_beta=True)
-            self.embed1 = L.EmbedID(n_vocab1, n_latent // 2)
-            self.embed2 = L.EmbedID(n_vocab2, n_latent // 2)
             # initialW=chainer.initializers.Normal()
+            assert n_latent % n_embed == 0
+            self.concat_embed = L.EmbedID(
+                n_vocab * n_embed, n_latent // n_embed)
 
         self.n_latent = n_latent
-        self.n_vocab1 = n_vocab1
-        self.n_vocab2 = n_vocab2
+        self.n_vocab = n_vocab
+        self.n_embed = n_embed
 
     def __call__(self, x, sigmoid=True):
         """AutoEncoder"""
@@ -46,13 +47,25 @@ class VQVAE(chainer.Chain):
         ze = self.le3(h)
         ze = self.bne(ze)
 
-        ze1, ze2 = F.split_axis(ze, 2, axis=1)
-
         def quantize_and_embed(ze, embed):
+            batchsize, dim = ze.shape
+            subdim = dim // self.n_embed
             ZE = ze.data[:, None, :]
             E = embed.W.data[None, :, :]
+
+            # split dim to (subdim, n_embed)
+            ZE = ZE.reshape(batchsize, 1, subdim, self.n_embed)
+            E = self.xp.stack(self.xp.split(E, self.n_embed, axis=1), axis=-1)
+            assert E.shape == (1, self.n_vocab, subdim, self.n_embed)
+
             argmin = self.xp.argmin(((ZE - E) ** 2).sum(axis=2), axis=1)
+            assert argmin.shape == (batchsize, self.n_embed)
+            argmin[:, self.xp.arange(self.n_embed)] \
+                += self.xp.arange(self.n_embed) * self.n_vocab
+
             e = embed(argmin)
+            ze = ze.reshape(batchsize, self.n_embed, subdim)
+            # equivalent to F.stack(F.split_axis(ze, self.n_embed, axis=1), axis=1)
             loss = F.mean((ze.data - e) ** 2) + \
                 F.mean((ze - e.data) ** 2) * 0.25
             loss *= e.shape[1]
@@ -62,13 +75,8 @@ class VQVAE(chainer.Chain):
             e = ST(e, ze)
             return e, loss
 
-        # e = ze
-        e1, loss1 = quantize_and_embed(ze1, self.embed1)
-        e2, loss2 = quantize_and_embed(ze2, self.embed2)
-        self.other_loss = (loss1 + loss2) / x.shape[0]
-        e = F.concat([e1, e2], axis=1)
-        # print(F.mean(F.sum(ze1 ** 2, axis=1).data ** 0.5),
-        #       F.mean(F.sum(e1 ** 2, axis=1).data ** 0.5))
+        e, loss = quantize_and_embed(ze, self.concat_embed)
+        self.other_loss = loss / x.shape[0]
         return e
 
     def decode(self, z, sigmoid=True):
@@ -81,11 +89,13 @@ class VQVAE(chainer.Chain):
             return h
 
     def sample(self, size):
-        zi1 = self.xp.random.randint(0, self.n_vocab1, (size, )).astype('i')
-        zi2 = self.xp.random.randint(0, self.n_vocab2, (size, )).astype('i')
-        e1 = self.embed1(zi1)
-        e2 = self.embed2(zi2)
-        e = F.concat([e1, e2], axis=1)
+        # TODO: get prior
+        zis = self.xp.random.randint(
+            0, self.n_vocab, (size, self.n_embed)).astype('i')
+        zis[:, self.xp.arange(self.n_embed)] \
+            += self.xp.arange(self.n_embed) * self.n_vocab
+
+        e = self.concat_embed(zis)
         return e
 
     def get_loss_func(self, C=1.0, k=1):
